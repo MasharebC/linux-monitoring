@@ -1,4 +1,3 @@
-version: "3.9"
 name: linux-monitoring
 services:
   prometheus:
@@ -11,19 +10,22 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
       - prom_data:/prometheus
-    ports: ["9090:9090"]
+    ports: ["9091:9090"]
     networks: [mon_net]
     restart: unless-stopped
 
   node-exporter:
     image: prom/node-exporter:v1.8.1
-    pid: host
-    network_mode: host
-    command: ["--path.rootfs=/host"]
+    container_name: linux-monitoring-node-exporter
+    command:
+      - --path.rootfs=/host
     volumes:
-      - /:/host:ro,rslave
+      - /:/host:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    networks:
+      - mon_net
     restart: unless-stopped
-
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.2
     ports: ["8080:8080"]
