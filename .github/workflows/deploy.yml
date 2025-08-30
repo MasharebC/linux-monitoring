@@ -1,0 +1,42 @@
+name: Deploy
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'docker-compose.yml'
+      - 'prometheus/**'
+      - 'grafana/**'
+      - 'alertmanager/**'
+      - 'ansible/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Ansible + deps
+        run: |
+          pip install --upgrade pip
+          pip install ansible-core==2.16.* docker
+          ansible-galaxy collection install community.docker community.general
+
+      - name: Write inventory and env from secrets
+        run: |
+          mkdir -p ansible
+          echo "${{ secrets.ANSIBLE_INVENTORY }}" > ansible/inventory.ini
+          echo "${{ secrets.ENV_FILE }}" > .env
+
+      - name: Add SSH key for Ansible
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Run playbook
+        run: ansible-playbook -i ansible/inventory.ini ansible/playbook.yml -v

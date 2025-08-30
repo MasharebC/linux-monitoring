@@ -1,0 +1,63 @@
+---
+- hosts: mon_hosts
+  become: true
+  vars_files:
+    - group_vars/all.yml
+  tasks:
+    - name: Install packages
+      apt:
+        name:
+          - docker.io
+          - docker-compose-plugin
+          - ufw
+          - rsync
+        update_cache: yes
+        state: present
+
+    - name: Add current user to docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+
+    - name: Allow firewall ports
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop: "{{ open_ports }}"
+
+    - name: Ensure project dir
+      file:
+        path: "{{ project_dir }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+
+    - name: Sync repository files to server (excludes .git and CI)
+      synchronize:
+        src: "{{ playbook_dir }}/.."
+        dest: "{{ project_dir }}"
+        rsync_opts:
+          - "--delete"
+          - "--exclude=.git"
+          - "--exclude=.github"
+          - "--exclude=.env.example"
+
+    - name: Install required collections on remote (idempotent)
+      command: ansible-galaxy collection install community.docker
+      changed_when: false
+
+    - name: Put .env on server (from workflow secret)
+      copy:
+        src: "{{ playbook_dir }}/../.env"
+        dest: "{{ project_dir }}/.env"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0600"
+
+    - name: Compose up (pull latest & start)
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_dir }}"
+        state: present
+        pull: always
