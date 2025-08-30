@@ -1,0 +1,68 @@
+version: "3.9"
+name: linux-monitoring
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prom_data:/prometheus
+    ports: ["9090:9090"]
+    networks: [mon_net]
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    pid: host
+    network_mode: host
+    command: ["--path.rootfs=/host"]
+    volumes:
+      - /:/host:ro,rslave
+    restart: unless-stopped
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.2
+    ports: ["8080:8080"]
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks: [mon_net]
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
+    ports: ["9093:9093"]
+    networks: [mon_net]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.4
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_DEFAULT_THEME=light
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
+    networks: [mon_net]
+    restart: unless-stopped
+
+volumes:
+  prom_data:
+  grafana_data:
+
+networks:
+  mon_net:
+    driver: bridge
